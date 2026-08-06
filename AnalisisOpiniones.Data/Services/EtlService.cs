@@ -289,12 +289,12 @@ public class EtlService : IEtlService
             await SafeExecuteAsync(() => _dimClienteRepository.BulkInsertAsync(dimClientes), "DimCliente", result);
             await SafeExecuteAsync(() => _dimProductoRepository.BulkInsertAsync(dimProductos), "DimProducto", result);
             await SafeExecuteAsync(() => _dimFechaRepository.BulkInsertAsync(dimFechas), "DimFecha", result);
-            await SafeExecuteAsync(() => _factOpinionRepository.BulkInsertAsync(factOpiniones), "FactOpiniones", result);
 
-            result.InsertedCount = factOpiniones.Count;
+            int totalDimensiones = dimClasificaciones.Count + dimFuentes.Count + dimClientes.Count + dimProductos.Count + dimFechas.Count;
+            result.InsertedCount = totalDimensiones;
             result.Success = result.ErrorCount == 0;
             result.Message = result.Success
-                ? $"Proceso ETL completado con éxito. {factOpiniones.Count} hechos de opinión procesados."
+                ? $"Proceso ETL de Dimensiones completado con éxito. {totalDimensiones} registros de dimensiones cargados en DWH."
                 : $"Proceso ETL completado con {result.ErrorCount} advertencias/errores.";
 
             _logger.LogInformation("{Message}", result.Message);
