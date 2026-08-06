@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CsvHelper" Version="33.0.1" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Entities\Api\" />
+    <Folder Include="Entities\Csv\" />
+    <Folder Include="Entities\Db\" />
+    <Folder Include="Entities\Dwh\Dimensions\" />
+    <Folder Include="Entities\Dwh\Facts\" />
+    <Folder Include="Entities\Excel\" />
+    <Folder Include="Persistence\Api\" />
+    <Folder Include="Persistence\Csv\" />
+    <Folder Include="Persistence\Db\" />
+    <Folder Include="Persistence\Dwh\" />
+    <Folder Include="Persistence\Excel\" />
+  </ItemGroup>
+
+</Project>

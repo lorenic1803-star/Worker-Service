@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/Api/">
+    <Project Path="AnalisisOpiniones.Api/AnalisisOpiniones.Api.csproj" />
+  </Folder>
+  <Folder Name="/Data/">
+    <Project Path="AnalisisOpiniones.Data/AnalisisOpiniones.Data.csproj" />
+  </Folder>
+  <Folder Name="/Process/">
+    <Project Path="AnalisisOpiniones.WkServicee/AnalisisOpiniones.WkServicee.csproj" />
+  </Folder>
+</Solution>
