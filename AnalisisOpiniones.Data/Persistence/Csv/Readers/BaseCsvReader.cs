@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.IO;
+using System.Text;
 using CsvHelper;
 using CsvHelper.Configuration;
 
@@ -16,7 +18,8 @@ public abstract class BaseCsvReader<T> where T : class
         {
             HeaderValidated = null,
             MissingFieldFound = null,
-            PrepareHeaderForMatch = args => args.Header.ToLower()
+            PrepareHeaderForMatch = args => args.Header.ToLower(),
+            Encoding = Encoding.GetEncoding("iso-8859-1")
         };
     }
 
@@ -29,7 +32,7 @@ public abstract class BaseCsvReader<T> where T : class
 
         var records = new List<T>();
 
-        using (var reader = new StreamReader(_filePath))
+        using (var reader = new StreamReader(_filePath, Encoding.GetEncoding("iso-8859-1")))
         using (var csv = new CsvReader(reader, _csvConfig))
         {
             await foreach (var record in csv.GetRecordsAsync<T>())

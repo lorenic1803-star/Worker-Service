@@ -78,31 +78,89 @@ public class EtlService : IEtlService
 
             _logger.LogInformation("Fase 2: Transformando y normalizando dimensiones y hechos...");
 
-            var dimClientes = clients.Select(c =>
+            // Collect all unique client IDs from fact sources and client catalog
+            var allClientIds = new HashSet<int>();
+            foreach (var c in clients)
             {
-                int.TryParse(c.IdCliente, out int idCliente);
+                var id = ParseId(c.IdCliente);
+                if (id.HasValue && id.Value > 0) allClientIds.Add(id.Value);
+            }
+            foreach (var s in surveys)
+            {
+                var id = ParseId(s.IdCliente);
+                if (id.HasValue && id.Value > 0) allClientIds.Add(id.Value);
+            }
+            foreach (var w in webReviews)
+            {
+                var id = ParseId(w.IdCliente);
+                if (id.HasValue && id.Value > 0) allClientIds.Add(id.Value);
+            }
+            foreach (var sc in socialComments)
+            {
+                var id = ParseId(sc.IdCliente);
+                if (id.HasValue && id.Value > 0) allClientIds.Add(id.Value);
+            }
+
+            // Create DimCliente for all known clients (from clients.csv + fact sources)
+            var clientDict = clients
+                .Where(c => ParseId(c.IdCliente).HasValue && ParseId(c.IdCliente) > 0)
+                .DistinctBy(c => ParseId(c.IdCliente)!.Value)
+                .ToDictionary(c => ParseId(c.IdCliente)!.Value, c => c);
+
+            var dimClientes = allClientIds.Select(id =>
+            {
+                clientDict.TryGetValue(id, out var clientRecord);
                 return new DimCliente
                 {
-                    IdCliente = idCliente,
-                    Nombre = c.Nombre ?? "Desconocido",
-                    Email = c.Email ?? "Sin email",
-                    Pais = "No especificado",
+                    IdCliente = id,
+                    Nombre = clientRecord?.Nombre ?? $"Cliente_{id}",
+                    Email = clientRecord?.Email ?? "Sin email",
+                    Pais = "Desconocido",
                     Edad = null,
                     RangoEdad = "Desconocido",
-                    TipoCliente = "Estándar",
+                    TipoCliente = "Estandar",
                     Ubicacion = "Desconocida"
                 };
-            }).Where(c => c.IdCliente > 0).ToList();
+            }).ToList();
 
-            var dimProductos = products.Select((p, idx) =>
+            // Collect all unique product IDs from fact sources and product catalog
+            var allProductIds = new HashSet<int>();
+            foreach (var p in products)
             {
-                int idProd = ParseId(p.IdProducto) ?? (idx + 1);
+                var id = ParseId(p.IdProducto);
+                if (id.HasValue && id.Value > 0) allProductIds.Add(id.Value);
+            }
+            foreach (var s in surveys)
+            {
+                var id = ParseId(s.IdProducto) ?? 1;
+                if (id > 0) allProductIds.Add(id);
+            }
+            foreach (var w in webReviews)
+            {
+                var id = ParseId(w.IdProducto) ?? 1;
+                if (id > 0) allProductIds.Add(id);
+            }
+            foreach (var sc in socialComments)
+            {
+                var id = ParseId(sc.IdProducto) ?? 1;
+                if (id > 0) allProductIds.Add(id);
+            }
+
+            // Create DimProducto for all known products (from products.csv + fact sources)
+            var productDict = products
+                .Where(p => ParseId(p.IdProducto).HasValue && ParseId(p.IdProducto) > 0)
+                .DistinctBy(p => ParseId(p.IdProducto)!.Value)
+                .ToDictionary(p => ParseId(p.IdProducto)!.Value, p => p);
+
+            var dimProductos = allProductIds.Select(id =>
+            {
+                productDict.TryGetValue(id, out var productRecord);
                 return new DimProducto
                 {
-                    IdProducto = idProd,
-                    NombreProducto = p.Nombre ?? "Producto Desconocido",
+                    IdProducto = id,
+                    NombreProducto = productRecord?.Nombre ?? $"Producto_{id}",
                     IdCategoria = 1,
-                    NombreCategoria = p.Categoria ?? "General"
+                    NombreCategoria = productRecord?.Categoria ?? "General"
                 };
             }).ToList();
 
@@ -132,13 +190,14 @@ public class EtlService : IEtlService
                     int idFechaKey = int.Parse(fecha.ToString("yyyyMMdd"));
                     int clasificacionId = MapClasificacionId(s.Clasificacion);
                     int.TryParse(s.PuntajeSatisfaccion, out int puntajeOrig);
+                    string idFuente = MapFuenteId(s.Fuente);
 
                     factOpiniones.Add(new FactOpinion
                     {
                         IdOpinion = ParseId(s.IdOpinion) ?? opinionIdSequence++,
                         IdCliente = ParseId(s.IdCliente),
                         IdProducto = ParseId(s.IdProducto) ?? 1,
-                        IdFuente = s.Fuente ?? "F001",
+                        IdFuente = idFuente,
                         IdClasificacion = clasificacionId,
                         IdFecha = idFechaKey,
                         PuntajeSatisfaccionOriginal = puntajeOrig > 0 ? puntajeOrig : null,
@@ -220,6 +279,9 @@ public class EtlService : IEtlService
                 .Cast<DimFecha>()
                 .ToList();
 
+            _logger.LogInformation("Generando dimensión de fecha completa (2020-2030)...");
+            await _dimFechaRepository.GenerateDateDimensionAsync(2020, 2030);
+
             _logger.LogInformation("Fase 3: Cargando datos en el Data Warehouse...");
 
             await SafeExecuteAsync(() => _dimClasificacionRepository.BulkInsertAsync(dimClasificaciones), "DimClasificacion", result);
@@ -297,6 +359,16 @@ public class EtlService : IEtlService
         if (lower.Contains("pos") || lower.Contains("good")) return 1;
         if (lower.Contains("neg") || lower.Contains("bad")) return 3;
         return 2;
+    }
+
+    private static string MapFuenteId(string? fuente)
+    {
+        if (string.IsNullOrWhiteSpace(fuente)) return "F001";
+        string lower = fuente.ToLower();
+        if (lower.Contains("encuesta") || lower.Contains("survey")) return "F001";
+        if (lower.Contains("web") || lower.Contains("review") || lower.Contains("reseña")) return "F002";
+        if (lower.Contains("social") || lower.Contains("instagram") || lower.Contains("twitter") || lower.Contains("facebook")) return "F003";
+        return "F001";
     }
 
     private static void EnsureDefaultFuentes(List<DimFuente> fuentes)
