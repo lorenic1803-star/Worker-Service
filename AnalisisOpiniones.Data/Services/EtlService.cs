@@ -284,6 +284,7 @@ public class EtlService : IEtlService
 
             _logger.LogInformation("Fase 3: Cargando datos en el Data Warehouse...");
 
+            await SafeExecuteAsync(() => _factOpinionRepository.TruncateAsync(), "FactOpiniones (Limpieza)", result);
             await SafeExecuteAsync(() => _dimClasificacionRepository.BulkInsertAsync(dimClasificaciones), "DimClasificacion", result);
             await SafeExecuteAsync(() => _dimFuenteRepository.BulkInsertAsync(dimFuentes), "DimFuente", result);
             await SafeExecuteAsync(() => _dimClienteRepository.BulkInsertAsync(dimClientes), "DimCliente", result);
