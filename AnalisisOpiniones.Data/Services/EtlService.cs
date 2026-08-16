@@ -79,24 +79,42 @@ public class EtlService : IEtlService
 
             _logger.LogInformation("Fase 2: Transformando y normalizando dimensiones y hechos...");
 
-            // 1. Catálogo oficial de clientes (DimCliente) exclusivamente desde clients.csv
-            var validClients = clients
+            // Recolectar todos los IDs únicos de clientes del catálogo y fuentes de hechos
+            var allClientIds = new HashSet<int>();
+            foreach (var c in clients)
+            {
+                var id = ParseId(c.IdCliente);
+                if (id.HasValue && id.Value > 0) allClientIds.Add(id.Value);
+            }
+            foreach (var s in surveys)
+            {
+                var id = ParseId(s.IdCliente);
+                if (id.HasValue && id.Value > 0) allClientIds.Add(id.Value);
+            }
+            foreach (var w in webReviews)
+            {
+                var id = ParseId(w.IdCliente);
+                if (id.HasValue && id.Value > 0) allClientIds.Add(id.Value);
+            }
+            foreach (var sc in socialComments)
+            {
+                var id = ParseId(sc.IdCliente);
+                if (id.HasValue && id.Value > 0) allClientIds.Add(id.Value);
+            }
+
+            var clientDict = clients
                 .Where(c => ParseId(c.IdCliente).HasValue && ParseId(c.IdCliente) > 0)
                 .DistinctBy(c => ParseId(c.IdCliente)!.Value)
-                .ToList();
+                .ToDictionary(c => ParseId(c.IdCliente)!.Value, c => c);
 
-            var validClientIds = validClients
-                .Select(c => ParseId(c.IdCliente)!.Value)
-                .ToHashSet();
-
-            var dimClientes = validClients.Select(c =>
+            var dimClientes = allClientIds.Select(id =>
             {
-                int id = ParseId(c.IdCliente)!.Value;
+                clientDict.TryGetValue(id, out var clientRecord);
                 return new DimCliente
                 {
                     IdCliente = id,
-                    Nombre = !string.IsNullOrWhiteSpace(c.Nombre) ? c.Nombre : $"Cliente_{id}",
-                    Email = !string.IsNullOrWhiteSpace(c.Email) ? c.Email : "Sin email",
+                    Nombre = clientRecord?.Nombre ?? $"Cliente_{id}",
+                    Email = clientRecord?.Email ?? $"cliente{id}@mail.com",
                     Pais = "Desconocido",
                     Edad = null,
                     RangoEdad = "Desconocido",
@@ -105,21 +123,43 @@ public class EtlService : IEtlService
                 };
             }).ToList();
 
-            // 2. Catálogo de productos (DimProducto)
-            var validProducts = products
+            // Recolectar todos los IDs únicos de productos del catálogo y fuentes de hechos
+            var allProductIds = new HashSet<int>();
+            foreach (var p in products)
+            {
+                var id = ParseId(p.IdProducto);
+                if (id.HasValue && id.Value > 0) allProductIds.Add(id.Value);
+            }
+            foreach (var s in surveys)
+            {
+                var id = ParseId(s.IdProducto) ?? 1;
+                if (id > 0) allProductIds.Add(id);
+            }
+            foreach (var w in webReviews)
+            {
+                var id = ParseId(w.IdProducto) ?? 1;
+                if (id > 0) allProductIds.Add(id);
+            }
+            foreach (var sc in socialComments)
+            {
+                var id = ParseId(sc.IdProducto) ?? 1;
+                if (id > 0) allProductIds.Add(id);
+            }
+
+            var productDict = products
                 .Where(p => ParseId(p.IdProducto).HasValue && ParseId(p.IdProducto) > 0)
                 .DistinctBy(p => ParseId(p.IdProducto)!.Value)
-                .ToList();
+                .ToDictionary(p => ParseId(p.IdProducto)!.Value, p => p);
 
-            var dimProductos = validProducts.Select(p =>
+            var dimProductos = allProductIds.Select(id =>
             {
-                int id = ParseId(p.IdProducto)!.Value;
+                productDict.TryGetValue(id, out var productRecord);
                 return new DimProducto
                 {
                     IdProducto = id,
-                    NombreProducto = !string.IsNullOrWhiteSpace(p.Nombre) ? p.Nombre : $"Producto_{id}",
+                    NombreProducto = productRecord?.Nombre ?? $"Producto_{id}",
                     IdCategoria = 1,
-                    NombreCategoria = !string.IsNullOrWhiteSpace(p.Categoria) ? p.Categoria : "General"
+                    NombreCategoria = productRecord?.Categoria ?? "General"
                 };
             }).ToList();
 
@@ -142,15 +182,8 @@ public class EtlService : IEtlService
             var factOpiniones = new List<FactOpinion>();
             int opinionIdSequence = 1;
 
-            // Procesar Encuestas (descartando si el cliente no existe en DimCliente)
             foreach (var s in surveys)
             {
-                var clienteId = ParseId(s.IdCliente);
-                if (!clienteId.HasValue || !validClientIds.Contains(clienteId.Value))
-                {
-                    continue; // Descartar opinión sin cliente existente
-                }
-
                 if (DateTime.TryParse(s.Fecha, out DateTime fecha))
                 {
                     int idFechaKey = int.Parse(fecha.ToString("yyyyMMdd"));
@@ -161,7 +194,7 @@ public class EtlService : IEtlService
                     factOpiniones.Add(new FactOpinion
                     {
                         IdOpinion = opinionIdSequence++,
-                        IdCliente = clienteId.Value,
+                        IdCliente = ParseId(s.IdCliente),
                         IdProducto = ParseId(s.IdProducto) ?? 1,
                         IdFuente = idFuente,
                         IdClasificacion = clasificacionId,
@@ -174,15 +207,8 @@ public class EtlService : IEtlService
                 }
             }
 
-            // Procesar Reseñas Web (descartando si el cliente no existe en DimCliente)
             foreach (var w in webReviews)
             {
-                var clienteId = ParseId(w.IdCliente);
-                if (!clienteId.HasValue || !validClientIds.Contains(clienteId.Value))
-                {
-                    continue; // Descartar opinión sin cliente existente
-                }
-
                 if (DateTime.TryParse(w.Fecha, out DateTime fecha))
                 {
                     int idFechaKey = int.Parse(fecha.ToString("yyyyMMdd"));
@@ -192,7 +218,7 @@ public class EtlService : IEtlService
                     factOpiniones.Add(new FactOpinion
                     {
                         IdOpinion = opinionIdSequence++,
-                        IdCliente = clienteId.Value,
+                        IdCliente = ParseId(w.IdCliente),
                         IdProducto = ParseId(w.IdProducto) ?? 1,
                         IdFuente = "F002",
                         IdClasificacion = clasificacionId,
@@ -205,15 +231,8 @@ public class EtlService : IEtlService
                 }
             }
 
-            // Procesar Comentarios Sociales (descartando si el cliente no existe en DimCliente)
             foreach (var sc in socialComments)
             {
-                var clienteId = ParseId(sc.IdCliente);
-                if (!clienteId.HasValue || !validClientIds.Contains(clienteId.Value))
-                {
-                    continue; // Descartar opinión sin cliente existente
-                }
-
                 if (DateTime.TryParse(sc.Fecha, out DateTime fecha))
                 {
                     int idFechaKey = int.Parse(fecha.ToString("yyyyMMdd"));
@@ -221,7 +240,7 @@ public class EtlService : IEtlService
                     factOpiniones.Add(new FactOpinion
                     {
                         IdOpinion = opinionIdSequence++,
-                        IdCliente = clienteId.Value,
+                        IdCliente = ParseId(sc.IdCliente),
                         IdProducto = ParseId(sc.IdProducto) ?? 1,
                         IdFuente = "F003",
                         IdClasificacion = 2,
