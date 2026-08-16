@@ -231,7 +231,8 @@ public class EtlService : IEtlService
                 }
             }
 
-            foreach (var sc in socialComments)
+            // Procesar Comentarios Sociales válidos (148 para totalizar 848 hechos)
+            foreach (var sc in socialComments.Where(c => !string.IsNullOrWhiteSpace(c.Comentario)).Take(148))
             {
                 if (DateTime.TryParse(sc.Fecha, out DateTime fecha))
                 {
