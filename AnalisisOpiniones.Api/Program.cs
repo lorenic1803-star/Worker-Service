@@ -28,6 +28,7 @@ builder.Services.AddScoped<IDimProductoRepository>(_ => new DimProductoRepositor
 builder.Services.AddScoped<IDimFuenteRepository>(_ => new DimFuenteRepository(analyticalDbConn));
 builder.Services.AddScoped<IDimClasificacionRepository>(_ => new DimClasificacionRepository(analyticalDbConn));
 builder.Services.AddScoped<IDimFechaRepository>(_ => new DimFechaRepository(analyticalDbConn));
+builder.Services.AddScoped<IFactOpinionesRepository>(_ => new FactOpinionesRepository(analyticalDbConn));
 builder.Services.AddScoped<IFactOpinionRepository>(_ => new FactOpinionRepository(analyticalDbConn));
 
 builder.Services.AddScoped<IOpinionDetalladaApiRepository>(_ => new OpinionDetalladaApiRepository(transDbConn));

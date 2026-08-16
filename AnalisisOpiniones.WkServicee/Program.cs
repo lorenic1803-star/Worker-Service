@@ -23,7 +23,8 @@ builder.Services.AddScoped<IDimProductoRepository>(_ => new DimProductoRepositor
 builder.Services.AddScoped<IDimFuenteRepository>(_ => new DimFuenteRepository(dwhConnStr));
 builder.Services.AddScoped<IDimClasificacionRepository>(_ => new DimClasificacionRepository(dwhConnStr));
 builder.Services.AddScoped<IDimFechaRepository>(_ => new DimFechaRepository(dwhConnStr));
-builder.Services.AddScoped<IFactOpinionRepository>(_ => new FactOpinionRepository(dwhConnStr));
+builder.Services.AddScoped<IFactOpinionesRepository>(sp => new FactOpinionesRepository(dwhConnStr, sp.GetService<Microsoft.Extensions.Logging.ILogger<FactOpinionesRepository>>()));
+builder.Services.AddScoped<IFactOpinionRepository>(sp => new FactOpinionesRepository(dwhConnStr, sp.GetService<Microsoft.Extensions.Logging.ILogger<FactOpinionesRepository>>()));
 
 // Registrar Servicio de Orquestación ETL
 builder.Services.AddScoped<IEtlService, EtlService>();

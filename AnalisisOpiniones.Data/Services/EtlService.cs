@@ -4,6 +4,7 @@ using AnalisisOpiniones.Data.Entities.Dwh.Facts;
 using AnalisisOpiniones.Data.Factories;
 using AnalisisOpiniones.Data.Interfaces;
 using AnalisisOpiniones.Data.Interfaces.Repositories.Dwh;
+using AnalisisOpiniones.Data.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
@@ -22,7 +23,7 @@ public class EtlService : IEtlService
     private readonly IDimFuenteRepository _dimFuenteRepository;
     private readonly IDimClasificacionRepository _dimClasificacionRepository;
     private readonly IDimFechaRepository _dimFechaRepository;
-    private readonly IFactOpinionRepository _factOpinionRepository;
+    private readonly IFactOpinionesRepository _factOpinionesRepository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<EtlService> _logger;
 
@@ -33,7 +34,7 @@ public class EtlService : IEtlService
         IDimFuenteRepository dimFuenteRepository,
         IDimClasificacionRepository dimClasificacionRepository,
         IDimFechaRepository dimFechaRepository,
-        IFactOpinionRepository factOpinionRepository,
+        IFactOpinionesRepository factOpinionesRepository,
         IConfiguration configuration,
         ILogger<EtlService> logger)
     {
@@ -43,7 +44,7 @@ public class EtlService : IEtlService
         _dimFuenteRepository = dimFuenteRepository;
         _dimClasificacionRepository = dimClasificacionRepository;
         _dimFechaRepository = dimFechaRepository;
-        _factOpinionRepository = factOpinionRepository;
+        _factOpinionesRepository = factOpinionesRepository;
         _configuration = configuration;
         _logger = logger;
     }
@@ -194,7 +195,7 @@ public class EtlService : IEtlService
 
                     factOpiniones.Add(new FactOpinion
                     {
-                        IdOpinion = ParseId(s.IdOpinion) ?? opinionIdSequence++,
+                        IdOpinion = opinionIdSequence++,
                         IdCliente = ParseId(s.IdCliente),
                         IdProducto = ParseId(s.IdProducto) ?? 1,
                         IdFuente = idFuente,
@@ -218,7 +219,7 @@ public class EtlService : IEtlService
 
                     factOpiniones.Add(new FactOpinion
                     {
-                        IdOpinion = ParseId(w.IdReview) ?? opinionIdSequence++,
+                        IdOpinion = opinionIdSequence++,
                         IdCliente = ParseId(w.IdCliente),
                         IdProducto = ParseId(w.IdProducto) ?? 1,
                         IdFuente = "F002",
@@ -240,7 +241,7 @@ public class EtlService : IEtlService
 
                     factOpiniones.Add(new FactOpinion
                     {
-                        IdOpinion = ParseId(sc.IdComment) ?? opinionIdSequence++,
+                        IdOpinion = opinionIdSequence++,
                         IdCliente = ParseId(sc.IdCliente),
                         IdProducto = ParseId(sc.IdProducto) ?? 1,
                         IdFuente = "F003",
@@ -284,17 +285,49 @@ public class EtlService : IEtlService
 
             _logger.LogInformation("Fase 3: Cargando datos en el Data Warehouse...");
 
+            // 1. Carga de Dimensiones
             await SafeExecuteAsync(() => _dimClasificacionRepository.BulkInsertAsync(dimClasificaciones), "DimClasificacion", result);
             await SafeExecuteAsync(() => _dimFuenteRepository.BulkInsertAsync(dimFuentes), "DimFuente", result);
             await SafeExecuteAsync(() => _dimClienteRepository.BulkInsertAsync(dimClientes), "DimCliente", result);
             await SafeExecuteAsync(() => _dimProductoRepository.BulkInsertAsync(dimProductos), "DimProducto", result);
             await SafeExecuteAsync(() => _dimFechaRepository.BulkInsertAsync(dimFechas), "DimFecha", result);
-            await SafeExecuteAsync(() => _factOpinionRepository.BulkInsertAsync(factOpiniones), "FactOpiniones", result);
 
-            result.InsertedCount = factOpiniones.Count;
+            // 2. Proceso de Limpieza previo a la carga de Fact Tables (Requerimiento)
+            _logger.LogInformation("Ejecutando proceso de limpieza previo en la tabla de hechos Fact_Opiniones...");
+            await SafeExecuteAsync(() => _factOpinionesRepository.ClearAsync(), "Fact_Opiniones (Limpieza previa)", result);
+
+            // 3. Mapeo hacia FactOpinionesDto y carga masiva mediante TVP y Stored Procedure
+            var factDtos = factOpiniones.Select(f => new FactOpinionesDto
+            {
+                IdOpinion = f.IdOpinion,
+                IdCliente = f.IdCliente,
+                IdProducto = f.IdProducto,
+                IdFuente = f.IdFuente,
+                IdClasificacion = f.IdClasificacion,
+                IdFecha = f.IdFecha,
+                PuntajeSatisfaccionOriginal = f.PuntajeSatisfaccionOriginal,
+                PuntajeNormalizado = f.PuntajeNormalizado,
+                Comentario = f.Comentario,
+                CantidadOpiniones = f.CantidadOpiniones
+            }).ToList();
+
+            if (factDtos.Any())
+            {
+                await SafeExecuteAsync(async () =>
+                {
+                    bool isLoaded = await _factOpinionesRepository.Load(factDtos);
+                    if (!isLoaded)
+                    {
+                        throw new Exception("El Stored Procedure LoadFactOpiniones retornó fallo o no afectó filas.");
+                    }
+                }, "Fact_Opiniones (TVP)", result);
+            }
+
+            int totalDimensiones = dimClasificaciones.Count + dimFuentes.Count + dimClientes.Count + dimProductos.Count + dimFechas.Count;
+            result.InsertedCount = totalDimensiones + factDtos.Count;
             result.Success = result.ErrorCount == 0;
             result.Message = result.Success
-                ? $"Proceso ETL completado con éxito. {factOpiniones.Count} hechos de opinión procesados."
+                ? $"Proceso ETL completado con éxito. {factDtos.Count} hechos y {totalDimensiones} dimensiones procesados en DWH."
                 : $"Proceso ETL completado con {result.ErrorCount} advertencias/errores.";
 
             _logger.LogInformation("{Message}", result.Message);
