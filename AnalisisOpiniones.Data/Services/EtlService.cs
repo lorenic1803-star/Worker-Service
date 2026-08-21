@@ -154,12 +154,13 @@ public class EtlService : IEtlService
             var dimProductos = allProductIds.Select(id =>
             {
                 productDict.TryGetValue(id, out var productRecord);
+                var (catId, catName) = MapCategoria(productRecord?.Categoria, id);
                 return new DimProducto
                 {
                     IdProducto = id,
-                    NombreProducto = productRecord?.Nombre ?? $"Producto_{id}",
-                    IdCategoria = 1,
-                    NombreCategoria = productRecord?.Categoria ?? "General"
+                    NombreProducto = !string.IsNullOrWhiteSpace(productRecord?.Nombre) ? productRecord.Nombre : $"Producto_{id}",
+                    IdCategoria = catId,
+                    NombreCategoria = catName
                 };
             }).ToList();
 
@@ -420,4 +421,30 @@ public class EtlService : IEtlService
             }
         }
     }
+
+    private static (int IdCategoria, string NombreCategoria) MapCategoria(string? rawCategoria, int productId)
+    {
+        if (!string.IsNullOrWhiteSpace(rawCategoria))
+        {
+            string lower = rawCategoria.ToLowerInvariant();
+            if (lower.Contains("elec")) return (1, "Electrónica");
+            if (lower.Contains("ropa") || lower.Contains("cloth") || lower.Contains("vest")) return (2, "Ropa");
+            if (lower.Contains("hogar") || lower.Contains("home") || lower.Contains("casa")) return (3, "Hogar");
+            if (lower.Contains("juguet") || lower.Contains("toy")) return (4, "Juguetes");
+            if (lower.Contains("deport") || lower.Contains("sport")) return (5, "Deportes");
+        }
+
+        // Si el producto no traía categoría en el archivo fuente, asignamos una de las 5 según su ID
+        int catId = ((productId - 1) % 5) + 1;
+        return catId switch
+        {
+            1 => (1, "Electrónica"),
+            2 => (2, "Ropa"),
+            3 => (3, "Hogar"),
+            4 => (4, "Juguetes"),
+            5 => (5, "Deportes"),
+            _ => (1, "Electrónica")
+        };
+    }
 }
+

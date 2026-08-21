@@ -18,7 +18,18 @@ public abstract class BaseCsvReader<T> where T : class
         {
             HeaderValidated = null,
             MissingFieldFound = null,
-            PrepareHeaderForMatch = args => args.Header.ToLower(),
+            PrepareHeaderForMatch = args =>
+            {
+                if (string.IsNullOrWhiteSpace(args.Header)) return string.Empty;
+                var h = args.Header.ToLowerInvariant();
+                return h
+                    .Replace("á", "a")
+                    .Replace("é", "e")
+                    .Replace("í", "i")
+                    .Replace("ó", "o")
+                    .Replace("ú", "u")
+                    .Replace("ñ", "n");
+            },
             Encoding = Encoding.GetEncoding("iso-8859-1")
         };
     }
